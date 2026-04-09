@@ -1,0 +1,9 @@
+# logs
+*.log
+*.txt
+
+# mac
+.DS_Store
+
+# temp
+*.tmp
