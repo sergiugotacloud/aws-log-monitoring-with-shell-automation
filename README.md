@@ -55,27 +55,41 @@ Email Notification
 #!/bin/bash
 
 # =========================
-# CONFIGURATION
+# CONFIGURATION — update these before running
 # =========================
-LOG_DIR="/home/ec2-user/logs"
-REPORT_FILE="/home/ec2-user/logs/log_analysis_report.txt"
+LOG_DIR="/home/ec2-user/logs"                              # path to your log directory
+REPORT_FILE="/home/ec2-user/logs/log_analysis_report.txt" # where to save the report
 ERROR_PATTERNS=("ERROR" "FATAL" "CRITICAL")
-THRESHOLD=10
+THRESHOLD=10                                               # alert if count exceeds this
 
 # =========================
 # INIT REPORT
 # =========================
+
+# Check directory exists before doing anything
+if [ ! -d "$LOG_DIR" ]; then
+    echo "ERROR: Log directory does not exist: $LOG_DIR"
+    exit 1
+fi
+
 echo "Log Analysis Report" > "$REPORT_FILE"
 echo "======================" >> "$REPORT_FILE"
+echo "Run at: $(date)" >> "$REPORT_FILE"
 
 echo -e "\nLog files modified in last 24h:" >> "$REPORT_FILE"
 LOG_FILES=$(find "$LOG_DIR" -name "*.log" -mtime -1)
+
+if [ -z "$LOG_FILES" ]; then
+    echo "No log files found in last 24h." >> "$REPORT_FILE"
+    exit 0
+fi
+
 echo "$LOG_FILES" >> "$REPORT_FILE"
 
 # =========================
 # PROCESS LOG FILES
 # =========================
-for LOG_FILE in $LOG_FILES; do
+find "$LOG_DIR" -name "*.log" -mtime -1 -print0 | while IFS= read -r -d '' LOG_FILE; do
 
     echo -e "\n===================================" >> "$REPORT_FILE"
     echo "Processing: $LOG_FILE" >> "$REPORT_FILE"
@@ -85,17 +99,14 @@ for LOG_FILE in $LOG_FILES; do
 
         echo -e "\nChecking: $PATTERN" >> "$REPORT_FILE"
 
-        # Print matching lines
-        grep "$PATTERN" "$LOG_FILE" >> "$REPORT_FILE"
+        MATCHES=$(grep "$PATTERN" "$LOG_FILE" 2>/dev/null || true)
+        COUNT=$(grep -c "$PATTERN" "$LOG_FILE" 2>/dev/null)
 
-        # Count occurrences
-        COUNT=$(grep -c "$PATTERN" "$LOG_FILE")
+        echo "$MATCHES" >> "$REPORT_FILE"
         echo "Count: $COUNT" >> "$REPORT_FILE"
 
-        # ALERT LOGIC
         if [ "$COUNT" -gt "$THRESHOLD" ]; then
-            echo "WARNING: High number of $PATTERN in $LOG_FILE" >> "$REPORT_FILE"
-            echo "ALERT: $PATTERN issue detected in $LOG_FILE"
+            echo "NOTICE: High number of $PATTERN in $LOG_FILE" >> "$REPORT_FILE"
         fi
 
     done
