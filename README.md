@@ -14,7 +14,7 @@ That was the starting point. What used to take 30–45 minutes of manual command
 
 ## Architecture
 
-![Architecture Diagram](screenshots/11__architecture-diagram.png)
+![Architecture Diagram](screenshots/11.%20architecture-diagram.png)
 
 The full flow once deployed on AWS:
 
@@ -153,7 +153,7 @@ crontab -e
 
 Amazon Linux 2023, t3.micro, eu-central-1. Attach an IAM role with `CloudWatchAgentServerPolicy` — the CloudWatch Agent needs this to push logs.
 
-![EC2 Instance](screenshots/1__ec2-instance.png)
+![EC2 Instance](screenshots/1.%20ec2-instance.png)
 
 ### Step 2 — SSH into the instance
 
@@ -161,7 +161,7 @@ Amazon Linux 2023, t3.micro, eu-central-1. Attach an IAM role with `CloudWatchAg
 ssh -i YOURKEYPAIR.pem ec2-user@YOUR_EC2_IP
 ```
 
-![SSH Connection](screenshots/2__ssh-connection.png)
+![SSH Connection](screenshots/2.%20ssh-connection.png)
 
 Once connected, create the logs directory and drop your sample log files in:
 
@@ -184,7 +184,7 @@ chmod +x ~/analyze-logs.sh
 ./analyze-logs.sh
 ```
 
-![Script Execution](screenshots/3__script-execution.png)
+![Script Execution](screenshots/3.%20script-execution.png)
 
 The script creates a report at `~/logs/log_analysis_report.txt`. You can read it with:
 
@@ -192,7 +192,7 @@ The script creates a report at `~/logs/log_analysis_report.txt`. You can read it
 cat ~/logs/log_analysis_report.txt
 ```
 
-![Report Output](screenshots/4__report-output.png)
+![Report Output](screenshots/4.%20report-output.png)
 
 ### Step 4 — Test the alert threshold
 
@@ -209,7 +209,7 @@ You'll see this in stdout:
 ALERT: ERROR issue detected in /home/ec2-user/logs/system.log
 ```
 
-![Alert Trigger](screenshots/5__alert-trigger.png)
+![Alert Trigger](screenshots/5.%20alert-trigger.png)
 
 ### Step 5 — Install the CloudWatch Agent
 
@@ -303,17 +303,17 @@ The email includes the alarm name, timestamp, metric details, and a direct link 
 
 | # | File | What it shows |
 |---|------|---------------|
-| 1 | `1__ec2-instance.png` | EC2 instance `log-analyzer` running in eu-central-1 |
-| 2 | `2__ssh-connection.png` | SSH into Amazon Linux 2023 |
-| 3 | `3__script-execution.png` | Running `./analyze-logs.sh` on the instance |
-| 4 | `4__report-output.png` | Report output broken down by file and pattern |
-| 5 | `5__alert-trigger.png` | ALERT stdout message when threshold is exceeded |
+| 1 | `1. ec2-instance.png` | EC2 instance `log-analyzer` running in eu-central-1 |
+| 2 | `2. ssh-connection.png` | SSH into Amazon Linux 2023 |
+| 3 | `3. script-execution.png` | Running `./analyze-logs.sh` on the instance |
+| 4 | `4. report-output.png` | Report output broken down by file and pattern |
+| 5 | `5. alert-trigger.png` | ALERT stdout message when threshold is exceeded |
 | 6 | `6-cloudwatch-log-group.png` | `log-analyzer` log group in CloudWatch |
 | 7 | `7-log-streams.png` | `system` and `application` log streams with timestamps |
 | 8 | `8-alarm-in-alarm.png` | CloudWatch alarm in ALARM state, `ErrorCW > 5` |
 | 9 | `9-email-alert.png` | SNS email notification from Frankfurt region |
 | 10 | `10-sns-subscription.png` | SNS subscription confirmation |
-| 11 | `11__architecture-diagram.png` | Full architecture diagram |
+| 11 | `11. architecture-diagram.png` | Full architecture diagram |
 
 ---
 
