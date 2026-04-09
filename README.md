@@ -1,29 +1,55 @@
-# Log Analyzer — Shell Script + AWS CloudWatch Alerting
+# Log Analyzer — Bash + EC2 + CloudWatch + SNS
 
-A Bash script that scans log files for errors, saves a structured report, and alerts you when things go wrong. Built out of a real need — then taken a step further by deploying it on EC2 with CloudWatch metrics and SNS email notifications.
+A Bash script that scans log files for errors, saves a structured report, and alerts you when things go wrong. Started as a local automation tool, then extended into a full AWS monitoring pipeline with real-time email alerts.
 
 ---
 
 ## The Problem
 
-If you've ever worked in a DevOps or cloud engineering role, you know this situation: you've got a handful of services dumping logs into a directory, and every morning someone has to manually grep through them looking for errors. It's repetitive, easy to miss things, and honestly just a waste of time.
+If you've worked in a DevOps or cloud engineering role, you know the drill: multiple services dumping logs into a directory, and someone has to manually grep through them every morning looking for errors. It's repetitive, easy to miss things, and a genuine waste of time.
 
-That was the starting point here. What used to take 30–45 minutes of manual command execution per day — checking for `ERROR`, `FATAL`, and `CRITICAL` entries across multiple log files — now runs in seconds with a single command.
-
----
-
-## What It Does
-
-- Scans only the log files modified in the **last 24 hours** (no need to re-check unchanged files)
-- Searches for configurable error patterns (`ERROR`, `FATAL`, `CRITICAL`)
-- Counts occurrences per pattern per file
-- Saves a structured report to a `.txt` file
-- Fires an **ALERT** to stdout if any pattern exceeds your defined threshold
-- Portable — point it at any log directory by changing two variables at the top
+That was the starting point. What used to take 30–45 minutes of manual command execution per day — checking for `ERROR`, `FATAL`, and `CRITICAL` entries across multiple log files — now runs in seconds with a single command, and fires an email automatically when something actually needs attention.
 
 ---
 
-## Script
+## Architecture
+
+![Architecture Diagram](screenshots/11__architecture-diagram.png)
+
+The full flow once deployed on AWS:
+
+```
+Shell Script (Bash)
+      ↓
+EC2 Instance  ←  IAM Role (CloudWatchAgentServerPolicy)
+      ↓
+CloudWatch Agent
+      ↓
+CloudWatch Logs  (log group: log-analyzer)
+      ↓
+Metric Filter  (ERROR → ErrorCW metric)
+      ↓
+CloudWatch Alarm  (threshold: ErrorCW > 5)
+      ↓
+Amazon SNS  (topic: log-alerts)
+      ↓
+Email Notification
+```
+
+---
+
+## What the Script Does
+
+- Scans only log files modified in the **last 24 hours** — no point re-checking files that haven't changed
+- Searches for configurable error patterns: `ERROR`, `FATAL`, `CRITICAL`
+- Counts occurrences per pattern, per file
+- Saves a full structured report to a `.txt` file
+- Prints an `ALERT` to stdout if any pattern count exceeds your defined threshold
+- Easy to adapt — everything configurable at the top of the file
+
+---
+
+## The Script
 
 ```bash
 #!/bin/bash
@@ -85,23 +111,20 @@ echo "Report saved at: $REPORT_FILE"
 
 ---
 
-## How to Use It
+## Quick Start (Local)
 
-### 1. Clone or copy the script
+### 1. Download the script
 
 ```bash
-curl -O https://raw.githubusercontent.com/your-repo/analyze-logs.sh
-# or just copy the script above into a file
+curl -O https://raw.githubusercontent.com/YOUR_GITHUB/log-analyzer/main/analyze-logs.sh
 ```
 
-### 2. Edit the configuration block
-
-Open the script and update the top section:
+### 2. Edit the config block at the top
 
 ```bash
 LOG_DIR="/path/to/your/logs"           # where your .log files live
-REPORT_FILE="/path/to/report.txt"      # where you want the output saved
-ERROR_PATTERNS=("ERROR" "FATAL" "CRITICAL")  # patterns to search for
+REPORT_FILE="/path/to/report.txt"      # where to save the output
+ERROR_PATTERNS=("ERROR" "FATAL" "CRITICAL")
 THRESHOLD=10                           # alert if count exceeds this
 ```
 
@@ -112,94 +135,89 @@ chmod +x analyze-logs.sh
 ./analyze-logs.sh
 ```
 
-### 4. Check the output
+### 4. Automate with cron (optional)
 
-The script prints a summary to the terminal and saves the full report:
-
-```
-Log analysis completed.
-Report saved at: /home/ec2-user/logs/log_analysis_report.txt
-```
-
-And inside the report:
-
-```
-Processing: /home/ec2-user/logs/application.log
-===================================
-
-Checking: ERROR
-ERROR: payment failed
-Count: 1
-
-Checking: FATAL
-FATAL: database down
-Count: 1
-
-Checking: CRITICAL
-Count: 0
-```
-
-If a threshold is crossed, you'll see this in stdout:
-
-```
-ALERT: ERROR issue detected in /home/ec2-user/logs/system.log
-```
-
-### 5. Automate it with cron (optional)
-
-Run it every day at 8am without touching it again:
+Run daily at 8am without thinking about it:
 
 ```bash
 crontab -e
-# Add this line:
+# Add:
 0 8 * * * /home/ec2-user/analyze-logs.sh
 ```
 
 ---
 
-## Taking It to AWS — EC2 + CloudWatch + SNS
+## Deploying on AWS — EC2 + CloudWatch + SNS
 
-After getting the script working locally, the next logical step was deploying it on a real server and adding proper alerting through AWS. Here's how the setup looks:
+### Step 1 — Launch an EC2 instance
 
-### Infrastructure
+Amazon Linux 2023, t3.micro, eu-central-1. Attach an IAM role with `CloudWatchAgentServerPolicy` — the CloudWatch Agent needs this to push logs.
 
-- **EC2** — Amazon Linux 2023, t3.micro (eu-central-1)
-- **CloudWatch Logs** — script output streamed to a log group called `log-analyzer`, with two log streams: `application` and `system`
-- **CloudWatch Metric Filter** — watches for the string `ERROR` and increments a custom metric (`LogAnalyzer/ErrorCW`) every time it appears
-- **CloudWatch Alarm** — triggers when `ErrorCW > 5` in a 1-minute window
-- **SNS Topic** — alarm fires a notification to `log-alerts`, which sends an email
+![EC2 Instance](screenshots/1__ec2-instance.png)
 
-### How to Deploy on EC2
-
-**Step 1 — Launch an EC2 instance**
-
-Any Amazon Linux 2023 t3.micro will do. Make sure you attach an IAM role with `CloudWatchAgentServerPolicy` or equivalent permissions to push logs.
-
-**Step 2 — SSH in and set up your log directory**
+### Step 2 — SSH into the instance
 
 ```bash
 ssh -i YOURKEYPAIR.pem ec2-user@YOUR_EC2_IP
-mkdir -p ~/logs
 ```
 
-**Step 3 — Copy the script and make it executable**
+![SSH Connection](screenshots/2__ssh-connection.png)
+
+Once connected, create the logs directory and drop your sample log files in:
 
 ```bash
-# Upload from local
-scp -i YOURKEYPAIR.pem analyze-logs.sh ec2-user@YOUR_EC2_IP:~/
-
-# Or create it directly on the instance
-nano ~/analyze-logs.sh
-chmod +x ~/analyze-logs.sh
+mkdir -p ~/logs
+# Upload your log files via scp or create test ones:
+echo "ERROR: payment failed" >> ~/logs/application.log
+echo "FATAL: database down" >> ~/logs/application.log
+echo "CRITICAL: disk full" >> ~/logs/system.log
 ```
 
-**Step 4 — Install and configure the CloudWatch Agent**
+### Step 3 — Upload and run the script
+
+```bash
+# From your local machine:
+scp -i YOURKEYPAIR.pem analyze-logs.sh ec2-user@YOUR_EC2_IP:~/
+
+# On the instance:
+chmod +x ~/analyze-logs.sh
+./analyze-logs.sh
+```
+
+![Script Execution](screenshots/3__script-execution.png)
+
+The script creates a report at `~/logs/log_analysis_report.txt`. You can read it with:
+
+```bash
+cat ~/logs/log_analysis_report.txt
+```
+
+![Report Output](screenshots/4__report-output.png)
+
+### Step 4 — Test the alert threshold
+
+Inject 12 errors to trigger the alert logic (threshold is set to 10):
+
+```bash
+for i in {1..12}; do echo "ERROR: overload" >> ~/logs/system.log; done
+./analyze-logs.sh
+```
+
+You'll see this in stdout:
+
+```
+ALERT: ERROR issue detected in /home/ec2-user/logs/system.log
+```
+
+![Alert Trigger](screenshots/5__alert-trigger.png)
+
+### Step 5 — Install the CloudWatch Agent
 
 ```bash
 sudo dnf install amazon-cloudwatch-agent -y
 ```
 
-Create a basic agent config at `/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json`:
+Create the config file at `/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json`:
 
 ```json
 {
@@ -234,68 +252,173 @@ sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
   -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
 ```
 
-**Step 5 — Create a Metric Filter in CloudWatch**
+Verify it's running:
 
-In the AWS Console, go to **CloudWatch → Log groups → log-analyzer → Metric filters → Create metric filter**:
+```bash
+sudo systemctl status amazon-cloudwatch-agent
+```
+
+### Step 6 — Verify logs are arriving in CloudWatch
+
+Go to **CloudWatch → Log groups → log-analyzer**. You should see two log streams: `application` and `system`.
+
+![CloudWatch Log Group](screenshots/6-cloudwatch-log-group.png)
+
+![Log Streams](screenshots/7-log-streams.png)
+
+### Step 7 — Create a Metric Filter
+
+In the AWS Console, go to **Log groups → log-analyzer → Metric filters → Create metric filter**:
 
 - Filter pattern: `ERROR`
 - Metric namespace: `LogAnalyzer`
 - Metric name: `ErrorCW`
 - Metric value: `1`
 
-**Step 6 — Create the Alarm**
+This turns every `ERROR` line in the logs into a countable CloudWatch metric.
+
+### Step 8 — Create the Alarm
 
 Go to **CloudWatch → Alarms → Create alarm**:
 
 - Select metric: `LogAnalyzer → ErrorCW`
-- Threshold: `Greater than 5` for `1 out of 1` datapoints (1-minute period)
-- Action: send to an SNS topic (create one if you don't have it, subscribe your email)
+- Threshold: greater than `5` for `1 out of 1` datapoints, 1-minute period
+- Action: send notification to an SNS topic
 
-Once set up, if you inject 12+ errors into a log file and run the script, the alarm will fire within a minute and you'll get an email from `no-reply@sns.amazonaws.com`.
+Create an SNS topic called `log-alerts` if you don't have one, and subscribe your email to it. You'll get a confirmation email — make sure to confirm the subscription or alerts won't deliver.
+
+![Alarm in Alarm State](screenshots/8-alarm-in-alarm.png)
+
+### Step 9 — Email alert fires
+
+When the `ErrorCW` metric crosses the threshold, you get an email within about a minute:
+
+![Email Alert](screenshots/9-email-alert.png)
+
+The email includes the alarm name, timestamp, metric details, and a direct link to the alarm in the AWS Console.
 
 ---
 
-## Screenshots
+## Screenshots Summary
 
-| Step | Description |
-|------|-------------|
-| EC2 instance running | t3.micro `log-analyzer` in eu-central-1 |
-| SSH connection | Amazon Linux 2023 terminal access |
-| Script execution | `./analyze-logs.sh` running on the instance |
-| Report output | Structured breakdown by file and pattern |
-| Alert trigger | 12 injected ERRORs trigger the ALERT stdout message |
-| CloudWatch log group | `log-analyzer` with `system` and `application` streams |
-| Metric filter | `ErrorCount` filter → `LogAnalyzer/ErrorCW` metric |
-| Alarm in alarm state | `ErrorCW > 5` threshold breached |
-| SNS email | Email notification fired from `sns.amazonaws.com` |
+| # | File | What it shows |
+|---|------|---------------|
+| 1 | `1__ec2-instance.png` | EC2 instance `log-analyzer` running in eu-central-1 |
+| 2 | `2__ssh-connection.png` | SSH into Amazon Linux 2023 |
+| 3 | `3__script-execution.png` | Running `./analyze-logs.sh` on the instance |
+| 4 | `4__report-output.png` | Report output broken down by file and pattern |
+| 5 | `5__alert-trigger.png` | ALERT stdout message when threshold is exceeded |
+| 6 | `6-cloudwatch-log-group.png` | `log-analyzer` log group in CloudWatch |
+| 7 | `7-log-streams.png` | `system` and `application` log streams with timestamps |
+| 8 | `8-alarm-in-alarm.png` | CloudWatch alarm in ALARM state, `ErrorCW > 5` |
+| 9 | `9-email-alert.png` | SNS email notification from Frankfurt region |
+| 10 | `10-sns-subscription.png` | SNS subscription confirmation |
+| 11 | `11__architecture-diagram.png` | Full architecture diagram |
 
 ---
 
 ## Customisation
 
-The script is intentionally simple so you can adapt it. A few things you might want to change:
+The script is kept intentionally simple so it's easy to adapt. Common changes:
 
-- **Add more error patterns** — just extend the `ERROR_PATTERNS` array
-- **Change the time window** — swap `-mtime -1` for `-mtime -2` to look back 2 days
-- **Send alert via email locally** — pipe the ALERT output to `mail` or `sendmail`
-- **Push to Slack** — replace the `echo "ALERT..."` line with a `curl` call to a webhook
-- **Adjust the threshold** — lower it during incidents, raise it for noisy services
+**Add more error patterns**
+```bash
+ERROR_PATTERNS=("ERROR" "FATAL" "CRITICAL" "EXCEPTION" "TIMEOUT")
+```
+
+**Change the time window** — look back 2 days instead of 1:
+```bash
+LOG_FILES=$(find "$LOG_DIR" -name "*.log" -mtime -2)
+```
+
+**Lower the threshold for sensitive services:**
+```bash
+THRESHOLD=3
+```
+
+**Send alert to Slack instead of just stdout:**
+```bash
+# Replace the echo "ALERT..." line with:
+curl -s -X POST -H 'Content-type: application/json' \
+  --data "{\"text\":\"ALERT: $PATTERN spike in $LOG_FILE\"}" \
+  YOUR_SLACK_WEBHOOK_URL
+```
+
+**Send local email alert (if `mail` is configured):**
+```bash
+echo "ALERT: $PATTERN in $LOG_FILE" | mail -s "Log Alert" your@email.com
+```
+
+---
+
+## Troubleshooting
+
+**Script runs but no log files are processed**
+
+Check if the find command is returning anything:
+```bash
+find /home/ec2-user/logs -name "*.log" -mtime -1
+```
+If empty, your log files are either older than 24h or in a different path. Either update `LOG_DIR` or touch the files to update their modification timestamp:
+```bash
+touch ~/logs/application.log
+```
+
+**CloudWatch Agent is installed but no logs appearing in console**
+
+Check the agent status:
+```bash
+sudo systemctl status amazon-cloudwatch-agent
+```
+
+Check agent logs for errors:
+```bash
+sudo tail -f /opt/aws/amazon-cloudwatch-agent/logs/amazon-cloudwatch-agent.log
+```
+
+Common cause: the IAM role isn't attached to the instance, or it doesn't have `CloudWatchAgentServerPolicy`. Verify under EC2 → Instance → Security → IAM role.
+
+**Alarm stays in INSUFFICIENT_DATA state**
+
+This means no data points have been received yet. The metric filter only creates a data point when a matching log line arrives. Inject a few errors and run the script again:
+```bash
+for i in {1..6}; do echo "ERROR: test" >> ~/logs/system.log; done
+./analyze-logs.sh
+```
+Wait 60–90 seconds for the alarm to evaluate.
+
+**Email subscription confirmed but no alert email received**
+
+Double check the SNS subscription status in the AWS Console — it needs to show `Confirmed`, not `PendingConfirmation`. Also check spam. AWS SNS emails come from `no-reply@sns.amazonaws.com` and sometimes get filtered.
+
+**Permission denied when running the script**
+
+```bash
+chmod +x ~/analyze-logs.sh
+```
+
+**Report file shows no matches even though errors exist**
+
+`grep` is case-sensitive by default. If your logs use lowercase (`error` instead of `ERROR`), either update the patterns or add the `-i` flag:
+```bash
+COUNT=$(grep -ci "$PATTERN" "$LOG_FILE")
+```
 
 ---
 
 ## Requirements
 
-- Bash 4+ (standard on Amazon Linux, macOS requires `brew install bash`)
-- Standard Linux tools: `find`, `grep` — nothing exotic
-- For the AWS extension: an EC2 instance, IAM permissions for CloudWatch, and the CloudWatch Agent installed
+- Bash 4+ (default on Amazon Linux; macOS ships with 3.x — install newer via `brew install bash`)
+- Standard Linux tools: `find`, `grep` — nothing to install
+- For the AWS extension: EC2 with IAM role, CloudWatch Agent, and SNS topic with confirmed email subscription
 
 ---
 
-## Why This Matters
+## Why This Exists
 
-This started as a manual process that ate up time every day. Turning it into a script was the first win. Deploying it on EC2 and wiring it to CloudWatch + SNS was the second — now errors surface as email alerts rather than requiring anyone to remember to run a command.
+This started as a manual process — grep through logs, count errors, repeat. Turning it into a script removed the repetition. Deploying it on EC2 with CloudWatch and SNS removed the need to even remember to run it. Now errors surface as email alerts automatically, and there's a full audit trail in CloudWatch Logs for when you need to dig deeper.
 
-It's a small project, but it's the kind of automation that actually changes how a team operates day-to-day.
+It's a small project but it reflects a real shift in how monitoring works: from reactive (someone notices something is wrong) to proactive (the system tells you before it becomes a problem).
 
 ---
 
