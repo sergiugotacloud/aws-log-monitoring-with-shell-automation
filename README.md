@@ -422,4 +422,12 @@ It's a small project but it reflects a real shift in how monitoring works: from 
 
 ---
 
-*Built by Sergiu Gota — [Gota Labs](https://gotalabs.io)*
+## Author
+
+**Sergiu Gota**
+AWS Certified Solutions Architect – Associate · AWS Cloud Practitioner
+
+[![GitHub](https://img.shields.io/badge/GitHub-sergiugotacloud-181717?logo=github)](https://github.com/sergiugotacloud)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-sergiu--gota--cloud-0A66C2?logo=linkedin)](https://linkedin.com/in/sergiu-gota-cloud)
+
+[Gota Labs](https://gotalabs.io)*
